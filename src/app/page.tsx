@@ -2,6 +2,7 @@
 
 import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import MoveDialog from "@/components/MoveDialog";
 
 type FolderItem = {
   id: string;
@@ -41,6 +42,10 @@ export default function DashboardPage() {
 
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<FileItem[] | null>(null);
+
+  const [moveTarget, setMoveTarget] = useState<
+    { type: "file" | "folder"; id: string; name: string } | null
+  >(null);
 
   const currentFolderId = crumbs[crumbs.length - 1].id;
 
@@ -129,6 +134,66 @@ export default function DashboardPage() {
       setSearchResults((r) => (r ? r.filter((f) => f.id !== id) : r));
     } else {
       setError("Delete failed");
+    }
+  }
+
+  async function deleteFolderItem(id: string) {
+    if (!window.confirm("Delete this folder and everything inside it?")) return;
+    const res = await fetch(`/api/folders/${id}`, { method: "DELETE" });
+    if (res.ok) {
+      loadFolder(currentFolderId);
+    } else {
+      setError("Delete failed");
+    }
+  }
+
+  async function renameFolderItem(folder: FolderItem) {
+    const name = window.prompt("Rename folder:", folder.name);
+    if (!name || name === folder.name) return;
+    const res = await fetch(`/api/folders/${folder.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (res.ok) {
+      loadFolder(currentFolderId);
+    } else {
+      setError("Rename failed");
+    }
+  }
+
+  async function renameFileItem(file: FileItem) {
+    const name = window.prompt("Rename file:", file.name);
+    if (!name || name === file.name) return;
+    const res = await fetch(`/api/files/${file.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (res.ok) {
+      loadFolder(currentFolderId);
+      setSearchResults((r) => (r ? r.map((f) => (f.id === file.id ? { ...f, name } : f)) : r));
+    } else {
+      setError("Rename failed");
+    }
+  }
+
+  async function confirmMove(targetFolderId: string | null) {
+    if (!moveTarget) return;
+    const url =
+      moveTarget.type === "folder" ? `/api/folders/${moveTarget.id}` : `/api/files/${moveTarget.id}`;
+    const key = moveTarget.type === "folder" ? "parentId" : "folderId";
+    const res = await fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [key]: targetFolderId }),
+    });
+    setMoveTarget(null);
+    if (res.ok) {
+      loadFolder(currentFolderId);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setError(data.error ?? "Move failed");
     }
   }
 
@@ -238,36 +303,70 @@ export default function DashboardPage() {
                   key={folder.id}
                   className="flex items-center justify-between border rounded px-3 py-2 text-sm hover:bg-gray-50"
                 >
-                  <button onClick={() => openFolder(folder)} className="flex items-center gap-2 text-left flex-1">
+                  <button onClick={() => openFolder(folder)} className="flex items-center gap-2 text-left flex-1 min-w-0">
                     <span>📁</span>
-                    <span>{folder.name}</span>
+                    <span className="truncate">{folder.name}</span>
                   </button>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <button onClick={() => renameFolderItem(folder)} className="underline">
+                      Rename
+                    </button>
+                    <button
+                      onClick={() => setMoveTarget({ type: "folder", id: folder.id, name: folder.name })}
+                      className="underline"
+                    >
+                      Move
+                    </button>
+                    <button onClick={() => deleteFolderItem(folder.id)} className="text-red-600 underline">
+                      Delete
+                    </button>
+                  </div>
                 </div>
               ))}
 
-            {listFiles.map((file) => (
-              <div
-                key={file.id}
-                className="flex items-center justify-between border rounded px-3 py-2 text-sm hover:bg-gray-50"
-              >
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <span>📄</span>
-                  <span className="truncate">{file.name}</span>
-                  <span className="text-gray-400 shrink-0">{formatSize(file.size)}</span>
+            {listFiles.map((file) => {
+              const previewable =
+                file.mimeType.startsWith("image/") ||
+                file.mimeType === "application/pdf" ||
+                file.mimeType === "text/plain";
+              return (
+                <div
+                  key={file.id}
+                  className="flex items-center justify-between border rounded px-3 py-2 text-sm hover:bg-gray-50"
+                >
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span>📄</span>
+                    <span className="truncate">{file.name}</span>
+                    <span className="text-gray-400 shrink-0">{formatSize(file.size)}</span>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    {previewable && (
+                      <a href={`/api/files/${file.id}/preview`} target="_blank" rel="noreferrer" className="underline">
+                        Preview
+                      </a>
+                    )}
+                    <a href={`/api/files/${file.id}/download`} className="underline">
+                      Download
+                    </a>
+                    <button onClick={() => renameFileItem(file)} className="underline">
+                      Rename
+                    </button>
+                    <button
+                      onClick={() => setMoveTarget({ type: "file", id: file.id, name: file.name })}
+                      className="underline"
+                    >
+                      Move
+                    </button>
+                    <button onClick={() => shareFileItem(file.id)} className="underline">
+                      Share
+                    </button>
+                    <button onClick={() => deleteFileItem(file.id)} className="text-red-600 underline">
+                      Delete
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <a href={`/api/files/${file.id}/download`} className="underline">
-                    Download
-                  </a>
-                  <button onClick={() => shareFileItem(file.id)} className="underline">
-                    Share
-                  </button>
-                  <button onClick={() => deleteFileItem(file.id)} className="text-red-600 underline">
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
 
             {!loading && !searchResults && folders.length === 0 && files.length === 0 && (
               <p className="text-sm text-gray-500">Empty folder.</p>
@@ -278,6 +377,16 @@ export default function DashboardPage() {
           </div>
         )}
       </main>
+
+      {moveTarget && (
+        <MoveDialog
+          itemType={moveTarget.type}
+          itemName={moveTarget.name}
+          excludeFolderId={moveTarget.type === "folder" ? moveTarget.id : undefined}
+          onCancel={() => setMoveTarget(null)}
+          onConfirm={confirmMove}
+        />
+      )}
     </div>
   );
 }
