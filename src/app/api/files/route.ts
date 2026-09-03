@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { saveFile } from "@/lib/storage";
+import { logActivity } from "@/lib/activity";
 
 export async function POST(request: NextRequest) {
   const session = await getSession();
@@ -33,6 +34,14 @@ export async function POST(request: NextRequest) {
       folderId,
       ownerId: session.userId,
     },
+  });
+
+  await logActivity({
+    ownerId: session.userId,
+    actorId: session.userId,
+    action: "upload",
+    targetType: "file",
+    targetName: record.name,
   });
 
   return NextResponse.json(record, { status: 201 });

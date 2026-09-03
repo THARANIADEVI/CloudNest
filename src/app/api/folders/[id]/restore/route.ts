@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { collectFolderIds } from "@/lib/folders";
+import { logActivity } from "@/lib/activity";
 
 export async function POST(
   _request: Request,
@@ -26,6 +27,14 @@ export async function POST(
       data: { deletedAt: null },
     }),
   ]);
+
+  await logActivity({
+    ownerId: session.userId,
+    actorId: session.userId,
+    action: "restore_folder",
+    targetType: "folder",
+    targetName: folder.name,
+  });
 
   return NextResponse.json({ ok: true });
 }

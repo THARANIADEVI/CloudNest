@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { logActivity } from "@/lib/activity";
 
 const bodySchema = z.object({
   email: z.string().email(),
@@ -53,6 +54,14 @@ export async function POST(
     where: { fileId_sharedWithId: { fileId: id, sharedWithId: target.id } },
     update: { role },
     create: { fileId: id, sharedWithId: target.id, role },
+  });
+
+  await logActivity({
+    ownerId: session.userId,
+    actorId: session.userId,
+    action: "share",
+    targetType: "file",
+    targetName: `${file.name} → ${email} (${role})`,
   });
 
   return NextResponse.json(share, { status: 201 });

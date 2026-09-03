@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { logActivity } from "@/lib/activity";
 
 export async function POST(
   _request: Request,
@@ -14,6 +15,14 @@ export async function POST(
   if (!file || !file.deletedAt) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   await prisma.file.update({ where: { id }, data: { deletedAt: null } });
+
+  await logActivity({
+    ownerId: file.ownerId,
+    actorId: session.userId,
+    action: "restore",
+    targetType: "file",
+    targetName: file.name,
+  });
 
   return NextResponse.json({ ok: true });
 }

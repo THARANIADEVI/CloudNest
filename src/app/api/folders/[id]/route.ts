@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { collectFolderIds, isSameOrDescendant } from "@/lib/folders";
+import { logActivity } from "@/lib/activity";
 
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
@@ -44,6 +45,25 @@ export async function PATCH(
     },
   });
 
+  if (name !== undefined && name !== folder.name) {
+    await logActivity({
+      ownerId: session.userId,
+      actorId: session.userId,
+      action: "rename_folder",
+      targetType: "folder",
+      targetName: name,
+    });
+  }
+  if (parentId !== undefined) {
+    await logActivity({
+      ownerId: session.userId,
+      actorId: session.userId,
+      action: "move_folder",
+      targetType: "folder",
+      targetName: updated.name,
+    });
+  }
+
   return NextResponse.json(updated);
 }
 
@@ -72,6 +92,14 @@ export async function DELETE(
       data: { deletedAt: now },
     }),
   ]);
+
+  await logActivity({
+    ownerId: session.userId,
+    actorId: session.userId,
+    action: "trash_folder",
+    targetType: "folder",
+    targetName: folder.name,
+  });
 
   return NextResponse.json({ ok: true });
 }

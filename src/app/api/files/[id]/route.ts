@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { getFileAccess, canEdit } from "@/lib/permissions";
+import { logActivity } from "@/lib/activity";
 
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
@@ -62,6 +63,34 @@ export async function PATCH(
     },
   });
 
+  if (name !== undefined && name !== access.file.name) {
+    await logActivity({
+      ownerId: access.file.ownerId,
+      actorId: session.userId,
+      action: "rename",
+      targetType: "file",
+      targetName: name,
+    });
+  }
+  if (folderId !== undefined) {
+    await logActivity({
+      ownerId: access.file.ownerId,
+      actorId: session.userId,
+      action: "move",
+      targetType: "file",
+      targetName: updated.name,
+    });
+  }
+  if (starred !== undefined) {
+    await logActivity({
+      ownerId: access.file.ownerId,
+      actorId: session.userId,
+      action: starred ? "star" : "unstar",
+      targetType: "file",
+      targetName: updated.name,
+    });
+  }
+
   return NextResponse.json(updated);
 }
 
@@ -78,6 +107,14 @@ export async function DELETE(
   if (!canEdit(access.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   await prisma.file.update({ where: { id }, data: { deletedAt: new Date() } });
+
+  await logActivity({
+    ownerId: access.file.ownerId,
+    actorId: session.userId,
+    action: "trash",
+    targetType: "file",
+    targetName: access.file.name,
+  });
 
   return NextResponse.json({ ok: true });
 }

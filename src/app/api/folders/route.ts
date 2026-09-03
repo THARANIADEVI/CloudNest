@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { logActivity } from "@/lib/activity";
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -49,6 +50,14 @@ export async function POST(request: NextRequest) {
 
   const folder = await prisma.folder.create({
     data: { name, parentId: parentId ?? null, ownerId: session.userId },
+  });
+
+  await logActivity({
+    ownerId: session.userId,
+    actorId: session.userId,
+    action: "create_folder",
+    targetType: "folder",
+    targetName: folder.name,
   });
 
   return NextResponse.json(folder, { status: 201 });

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { hashPassword } from "@/lib/auth";
+import { logActivity } from "@/lib/activity";
 
 const bodySchema = z.object({
   password: z.string().min(1).optional(),
@@ -34,6 +35,14 @@ export async function POST(
     ? await prisma.share.update({ where: { id: existing.id }, data: { password: passwordHash, expiresAt } })
     : await prisma.share.create({ data: { fileId: id, token: randomUUID(), password: passwordHash, expiresAt } });
 
+  await logActivity({
+    ownerId: session.userId,
+    actorId: session.userId,
+    action: "create_link",
+    targetType: "file",
+    targetName: file.name,
+  });
+
   return NextResponse.json({ token: share.token, url: `/s/${share.token}`, expiresAt: share.expiresAt });
 }
 
@@ -49,6 +58,14 @@ export async function DELETE(
   if (!file) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   await prisma.share.deleteMany({ where: { fileId: id } });
+
+  await logActivity({
+    ownerId: session.userId,
+    actorId: session.userId,
+    action: "revoke_link",
+    targetType: "file",
+    targetName: file.name,
+  });
 
   return NextResponse.json({ ok: true });
 }

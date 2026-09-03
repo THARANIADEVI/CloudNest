@@ -8,14 +8,17 @@ datasource db {
 }
 
 model User {
-  id          String       @id @default(cuid())
-  email       String       @unique
-  password    String
-  name        String
-  createdAt   DateTime     @default(now())
-  folders     Folder[]
-  files       File[]
-  userShares  UserShare[]  @relation("SharedWith")
+  id               String        @id @default(cuid())
+  email            String        @unique
+  password         String
+  name             String
+  createdAt        DateTime      @default(now())
+  folders          Folder[]
+  files            File[]
+  userShares       UserShare[]   @relation("SharedWith")
+  fileVersions     FileVersion[]
+  activitiesOwned  Activity[]    @relation("ActivityOwner")
+  activitiesActed  Activity[]    @relation("ActivityActor")
 }
 
 model Folder {
@@ -46,12 +49,43 @@ model File {
   owner      User        @relation(fields: [ownerId], references: [id])
   shares     Share[]
   userShares UserShare[]
-  starred    Boolean     @default(false)
-  deletedAt  DateTime?
-  createdAt  DateTime    @default(now())
+  starred        Boolean       @default(false)
+  currentVersion Int           @default(1)
+  versions       FileVersion[]
+  deletedAt      DateTime?
+  createdAt      DateTime      @default(now())
 
   @@index([ownerId])
   @@index([folderId])
+}
+
+model FileVersion {
+  id            String   @id @default(cuid())
+  fileId        String
+  file          File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  path          String
+  size          Int
+  mimeType      String
+  versionNumber Int
+  createdAt     DateTime @default(now())
+  createdById   String
+  createdBy     User     @relation(fields: [createdById], references: [id])
+
+  @@index([fileId])
+}
+
+model Activity {
+  id         String   @id @default(cuid())
+  ownerId    String
+  owner      User     @relation("ActivityOwner", fields: [ownerId], references: [id])
+  actorId    String
+  actor      User     @relation("ActivityActor", fields: [actorId], references: [id])
+  action     String
+  targetType String
+  targetName String
+  createdAt  DateTime @default(now())
+
+  @@index([ownerId])
 }
 
 model Share {

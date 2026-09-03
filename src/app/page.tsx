@@ -4,6 +4,7 @@ import { ChangeEvent, DragEvent, FormEvent, useCallback, useEffect, useRef, useS
 import { useRouter } from "next/navigation";
 import MoveDialog from "@/components/MoveDialog";
 import ShareDialog from "@/components/ShareDialog";
+import VersionsDialog from "@/components/VersionsDialog";
 
 type FolderItem = {
   id: string;
@@ -24,7 +25,39 @@ type FileItem = {
 };
 
 type Crumb = { id: string | null; name: string };
-type View = "drive" | "starred" | "shared" | "trash";
+type View = "drive" | "starred" | "shared" | "trash" | "activity";
+
+type Activity = {
+  id: string;
+  action: string;
+  targetType: string;
+  targetName: string;
+  createdAt: string;
+  actor: { name: string; email: string };
+};
+
+const ACTION_LABELS: Record<string, string> = {
+  upload: "uploaded",
+  new_version: "uploaded a new version of",
+  restore_version: "restored a previous version of",
+  rename: "renamed",
+  move: "moved",
+  star: "starred",
+  unstar: "unstarred",
+  trash: "moved to trash",
+  restore: "restored",
+  delete_forever: "permanently deleted",
+  share: "shared",
+  unshare: "unshared",
+  create_link: "created a share link for",
+  revoke_link: "revoked the share link for",
+  create_folder: "created folder",
+  rename_folder: "renamed folder",
+  move_folder: "moved folder",
+  trash_folder: "moved folder to trash",
+  restore_folder: "restored folder",
+  delete_folder_forever: "permanently deleted folder",
+};
 
 function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -65,6 +98,10 @@ export default function DashboardPage() {
     { type: "file" | "folder"; id: string; name: string } | null
   >(null);
   const [shareTarget, setShareTarget] = useState<{ id: string; name: string } | null>(null);
+  const [versionsTarget, setVersionsTarget] = useState<{ id: string; name: string; canEdit: boolean } | null>(
+    null
+  );
+  const [activities, setActivities] = useState<Activity[]>([]);
 
   const currentFolderId = crumbs[crumbs.length - 1].id;
 
@@ -125,6 +162,19 @@ export default function DashboardPage() {
     setLoading(false);
   }, []);
 
+  const loadActivity = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    const res = await fetch("/api/activity");
+    if (res.ok) {
+      const data = await res.json();
+      setActivities(data.activities);
+    } else {
+      setError("Failed to load activity");
+    }
+    setLoading(false);
+  }, []);
+
   useEffect(() => {
     (async () => {
       const res = await fetch("/api/auth/me");
@@ -144,13 +194,15 @@ export default function DashboardPage() {
     else if (view === "starred") loadStarred();
     else if (view === "shared") loadShared();
     else if (view === "trash") loadTrash();
-  }, [checkedAuth, view, currentFolderId, loadFolder, loadStarred, loadShared, loadTrash]);
+    else if (view === "activity") loadActivity();
+  }, [checkedAuth, view, currentFolderId, loadFolder, loadStarred, loadShared, loadTrash, loadActivity]);
 
   function refresh() {
     if (view === "drive") loadFolder(currentFolderId);
     else if (view === "starred") loadStarred();
     else if (view === "shared") loadShared();
     else if (view === "trash") loadTrash();
+    else if (view === "activity") loadActivity();
   }
 
   function switchView(v: View) {
@@ -377,6 +429,7 @@ export default function DashboardPage() {
             ["starred", "Starred"],
             ["shared", "Shared with me"],
             ["trash", "Trash"],
+            ["activity", "Activity"],
           ] as [View, string][]
         ).map(([v, label]) => (
           <button
@@ -481,6 +534,18 @@ export default function DashboardPage() {
 
           {loading && !searchResults ? (
             <p className="text-sm text-gray-500">Loading...</p>
+          ) : view === "activity" ? (
+            <div className="space-y-1">
+              {activities.length === 0 && <p className="text-sm text-gray-500">No activity yet.</p>}
+              {activities.map((a) => (
+                <div key={a.id} className="border rounded px-3 py-2 text-sm">
+                  <span className="font-medium">{a.actor.name}</span>{" "}
+                  <span className="text-gray-600">{ACTION_LABELS[a.action] ?? a.action}</span>{" "}
+                  <span className="font-medium">{a.targetName}</span>
+                  <span className="text-gray-400"> · {new Date(a.createdAt).toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
           ) : (
             <div className="space-y-1">
               {view === "drive" &&
@@ -577,6 +642,12 @@ export default function DashboardPage() {
                         </>
                       ) : (
                         <>
+                          <button
+                            onClick={() => setVersionsTarget({ id: file.id, name: file.name, canEdit: editable })}
+                            className="underline"
+                          >
+                            Versions
+                          </button>
                           {editable && (
                             <button onClick={() => renameFileItem(file)} className="underline">
                               Rename
@@ -635,6 +706,16 @@ export default function DashboardPage() {
 
       {shareTarget && (
         <ShareDialog fileId={shareTarget.id} fileName={shareTarget.name} onClose={() => setShareTarget(null)} />
+      )}
+
+      {versionsTarget && (
+        <VersionsDialog
+          fileId={versionsTarget.id}
+          fileName={versionsTarget.name}
+          canEdit={versionsTarget.canEdit}
+          onClose={() => setVersionsTarget(null)}
+          onRestored={refresh}
+        />
       )}
     </div>
   );
