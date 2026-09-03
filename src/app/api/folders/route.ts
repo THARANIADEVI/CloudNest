@@ -11,15 +11,15 @@ export async function GET(request: NextRequest) {
 
   const [folders, files, currentFolder] = await Promise.all([
     prisma.folder.findMany({
-      where: { ownerId: session.userId, parentId: parentId ?? null },
+      where: { ownerId: session.userId, parentId: parentId ?? null, deletedAt: null },
       orderBy: { name: "asc" },
     }),
     prisma.file.findMany({
-      where: { ownerId: session.userId, folderId: parentId ?? null },
+      where: { ownerId: session.userId, folderId: parentId ?? null, deletedAt: null },
       orderBy: { name: "asc" },
     }),
     parentId
-      ? prisma.folder.findFirst({ where: { id: parentId, ownerId: session.userId } })
+      ? prisma.folder.findFirst({ where: { id: parentId, ownerId: session.userId, deletedAt: null } })
       : null,
   ]);
 
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
   const { name, parentId } = parsed.data;
 
   if (parentId) {
-    const parent = await prisma.folder.findFirst({ where: { id: parentId, ownerId: session.userId } });
+    const parent = await prisma.folder.findFirst({ where: { id: parentId, ownerId: session.userId, deletedAt: null } });
     if (!parent) return NextResponse.json({ error: "Parent folder not found" }, { status: 404 });
   }
 

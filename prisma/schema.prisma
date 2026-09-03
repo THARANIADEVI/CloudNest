@@ -8,53 +8,73 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String
-  createdAt DateTime @default(now())
-  folders   Folder[]
-  files     File[]
+  id          String       @id @default(cuid())
+  email       String       @unique
+  password    String
+  name        String
+  createdAt   DateTime     @default(now())
+  folders     Folder[]
+  files       File[]
+  userShares  UserShare[]  @relation("SharedWith")
 }
 
 model Folder {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   name      String
   parentId  String?
-  parent    Folder?  @relation("FolderToFolder", fields: [parentId], references: [id], onDelete: Cascade)
-  children  Folder[] @relation("FolderToFolder")
+  parent    Folder?   @relation("FolderToFolder", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Folder[]  @relation("FolderToFolder")
   ownerId   String
-  owner     User     @relation(fields: [ownerId], references: [id])
+  owner     User      @relation(fields: [ownerId], references: [id])
   files     File[]
-  createdAt DateTime @default(now())
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
 
   @@index([ownerId])
   @@index([parentId])
 }
 
 model File {
-  id        String   @id @default(cuid())
-  name      String
-  path      String
-  size      Int
-  mimeType  String
-  folderId  String?
-  folder    Folder?  @relation(fields: [folderId], references: [id], onDelete: Cascade)
-  ownerId   String
-  owner     User     @relation(fields: [ownerId], references: [id])
-  shares    Share[]
-  createdAt DateTime @default(now())
+  id         String      @id @default(cuid())
+  name       String
+  path       String
+  size       Int
+  mimeType   String
+  folderId   String?
+  folder     Folder?     @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  ownerId    String
+  owner      User        @relation(fields: [ownerId], references: [id])
+  shares     Share[]
+  userShares UserShare[]
+  starred    Boolean     @default(false)
+  deletedAt  DateTime?
+  createdAt  DateTime    @default(now())
 
   @@index([ownerId])
   @@index([folderId])
 }
 
 model Share {
-  id        String   @id @default(cuid())
-  token     String   @unique
-  fileId    String
-  file      File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  id         String    @id @default(cuid())
+  token      String    @unique
+  fileId     String
+  file       File      @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  password   String?
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
 
   @@index([fileId])
+}
+
+model UserShare {
+  id             String   @id @default(cuid())
+  fileId         String
+  file           File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  sharedWithId   String
+  sharedWith     User     @relation("SharedWith", fields: [sharedWithId], references: [id], onDelete: Cascade)
+  role           String   @default("viewer")
+  createdAt      DateTime @default(now())
+
+  @@unique([fileId, sharedWithId])
+  @@index([sharedWithId])
 }

@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (folderId) {
-    const parent = await prisma.folder.findFirst({ where: { id: folderId, ownerId: session.userId } });
+    const parent = await prisma.folder.findFirst({ where: { id: folderId, ownerId: session.userId, deletedAt: null } });
     if (!parent) return NextResponse.json({ error: "Folder not found" }, { status: 404 });
   }
 
