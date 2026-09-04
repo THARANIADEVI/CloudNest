@@ -8,7 +8,7 @@ export async function GET() {
 
   const shares = await prisma.userShare.findMany({
     where: { sharedWithId: session.userId, file: { deletedAt: null } },
-    include: { file: true },
+    include: { file: { include: { tags: true } } },
     orderBy: { createdAt: "desc" },
   });
 

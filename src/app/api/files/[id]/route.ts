@@ -9,6 +9,7 @@ const patchSchema = z.object({
   name: z.string().min(1).optional(),
   folderId: z.string().nullable().optional(),
   starred: z.boolean().optional(),
+  tagIds: z.array(z.string()).optional(),
 });
 
 export async function GET(
@@ -40,13 +41,26 @@ export async function PATCH(
   const body = await request.json();
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
-  const { name, folderId, starred } = parsed.data;
+  const { name, folderId, starred, tagIds } = parsed.data;
 
   if (folderId !== undefined && access.role !== "owner") {
     return NextResponse.json({ error: "Only the owner can move this file" }, { status: 403 });
   }
   if (starred !== undefined && access.role !== "owner") {
     return NextResponse.json({ error: "Only the owner can star this file" }, { status: 403 });
+  }
+  if (tagIds !== undefined && access.role !== "owner") {
+    return NextResponse.json({ error: "Only the owner can tag this file" }, { status: 403 });
+  }
+
+  if (tagIds !== undefined) {
+    const ownedTags = await prisma.tag.findMany({
+      where: { id: { in: tagIds }, ownerId: session.userId },
+      select: { id: true },
+    });
+    if (ownedTags.length !== tagIds.length) {
+      return NextResponse.json({ error: "Invalid tag" }, { status: 400 });
+    }
   }
 
   if (folderId !== undefined && folderId !== null) {
@@ -60,7 +74,9 @@ export async function PATCH(
       ...(name !== undefined ? { name } : {}),
       ...(folderId !== undefined ? { folderId } : {}),
       ...(starred !== undefined ? { starred } : {}),
+      ...(tagIds !== undefined ? { tags: { set: tagIds.map((tagId) => ({ id: tagId })) } } : {}),
     },
+    include: { tags: true },
   });
 
   if (name !== undefined && name !== access.file.name) {

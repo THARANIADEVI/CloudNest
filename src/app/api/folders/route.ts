@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
     }),
     prisma.file.findMany({
       where: { ownerId: session.userId, folderId: parentId ?? null, deletedAt: null },
+      include: { tags: true },
       orderBy: { name: "asc" },
     }),
     parentId

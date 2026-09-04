@@ -13,6 +13,8 @@ type FolderItem = {
   deletedAt?: string | null;
 };
 
+type Tag = { id: string; name: string };
+
 type FileItem = {
   id: string;
   name: string;
@@ -22,6 +24,7 @@ type FileItem = {
   starred: boolean;
   deletedAt?: string | null;
   role?: "owner" | "editor" | "viewer";
+  tags?: Tag[];
 };
 
 type Crumb = { id: string | null; name: string };
@@ -92,7 +95,11 @@ export default function DashboardPage() {
 
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
   const [searchResults, setSearchResults] = useState<FileItem[] | null>(null);
+
+  const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [quota, setQuota] = useState<{ usedBytes: number; quotaBytes: number } | null>(null);
 
   const [moveTarget, setMoveTarget] = useState<
     { type: "file" | "folder"; id: string; name: string } | null
@@ -175,6 +182,19 @@ export default function DashboardPage() {
     setLoading(false);
   }, []);
 
+  const loadTags = useCallback(async () => {
+    const res = await fetch("/api/tags");
+    if (res.ok) {
+      const data = await res.json();
+      setAllTags(data.tags);
+    }
+  }, []);
+
+  const loadQuota = useCallback(async () => {
+    const res = await fetch("/api/quota");
+    if (res.ok) setQuota(await res.json());
+  }, []);
+
   useEffect(() => {
     (async () => {
       const res = await fetch("/api/auth/me");
@@ -185,8 +205,10 @@ export default function DashboardPage() {
       }
       setUserName(data.user.email);
       setCheckedAuth(true);
+      loadTags();
+      loadQuota();
     })();
-  }, [router]);
+  }, [router, loadTags, loadQuota]);
 
   useEffect(() => {
     if (!checkedAuth) return;
@@ -203,6 +225,7 @@ export default function DashboardPage() {
     else if (view === "shared") loadShared();
     else if (view === "trash") loadTrash();
     else if (view === "activity") loadActivity();
+    loadQuota();
   }
 
   function switchView(v: View) {
@@ -210,6 +233,7 @@ export default function DashboardPage() {
     setCrumbs([{ id: null, name: "My files" }]);
     setQuery("");
     setTypeFilter("");
+    setTagFilter("");
     setSearchResults(null);
   }
 
@@ -254,6 +278,7 @@ export default function DashboardPage() {
     }
     setUploading(false);
     loadFolder(currentFolderId);
+    loadQuota();
   }
 
   async function onUploadChange(e: ChangeEvent<HTMLInputElement>) {
@@ -330,15 +355,19 @@ export default function DashboardPage() {
   async function deleteFileForever(id: string) {
     if (!window.confirm("Permanently delete this file? This cannot be undone.")) return;
     const res = await fetch(`/api/files/${id}/permanent`, { method: "DELETE" });
-    if (res.ok) loadTrash();
-    else setError("Delete failed");
+    if (res.ok) {
+      loadTrash();
+      loadQuota();
+    } else setError("Delete failed");
   }
 
   async function deleteFolderForever(id: string) {
     if (!window.confirm("Permanently delete this folder and everything inside it? This cannot be undone.")) return;
     const res = await fetch(`/api/folders/${id}/permanent`, { method: "DELETE" });
-    if (res.ok) loadTrash();
-    else setError("Delete failed");
+    if (res.ok) {
+      loadTrash();
+      loadQuota();
+    } else setError("Delete failed");
   }
 
   async function renameFolderItem(folder: FolderItem) {
@@ -372,6 +401,40 @@ export default function DashboardPage() {
     }
   }
 
+  async function manageTagsForFile(file: FileItem) {
+    const current = (file.tags ?? []).map((t) => t.name).join(", ");
+    const input = window.prompt("Tags (comma separated):", current);
+    if (input === null) return;
+    const names = Array.from(new Set(input.split(",").map((n) => n.trim()).filter(Boolean)));
+
+    const tagIds: string[] = [];
+    for (const name of names) {
+      const existing = allTags.find((t) => t.name === name);
+      if (existing) {
+        tagIds.push(existing.id);
+        continue;
+      }
+      const res = await fetch("/api/tags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (res.ok) tagIds.push((await res.json()).id);
+    }
+
+    const res = await fetch(`/api/files/${file.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tagIds }),
+    });
+    if (res.ok) {
+      loadTags();
+      refresh();
+    } else {
+      setError("Failed to update tags");
+    }
+  }
+
   async function confirmMove(targetFolderId: string | null) {
     if (!moveTarget) return;
     const url =
@@ -393,13 +456,14 @@ export default function DashboardPage() {
 
   async function runSearch(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!query.trim() && !typeFilter) {
+    if (!query.trim() && !typeFilter && !tagFilter) {
       setSearchResults(null);
       return;
     }
     const params = new URLSearchParams();
     if (query.trim()) params.set("q", query.trim());
     if (typeFilter) params.set("type", typeFilter);
+    if (tagFilter) params.set("tag", tagFilter);
     const res = await fetch(`/api/search?${params.toString()}`);
     if (res.ok) {
       const data = await res.json();
@@ -421,27 +485,42 @@ export default function DashboardPage() {
 
   return (
     <div className="flex-1 flex">
-      <aside className="w-48 border-r shrink-0 p-3 space-y-1 text-sm">
+      <aside className="w-48 border-r shrink-0 p-3 text-sm flex flex-col h-full">
         <div className="font-semibold px-2 pb-3">CloudNest</div>
-        {(
-          [
-            ["drive", "My Drive"],
-            ["starred", "Starred"],
-            ["shared", "Shared with me"],
-            ["trash", "Trash"],
-            ["activity", "Activity"],
-          ] as [View, string][]
-        ).map(([v, label]) => (
-          <button
-            key={v}
-            onClick={() => switchView(v)}
-            className={`w-full text-left rounded px-2 py-1.5 ${
-              view === v ? "bg-black text-white" : "hover:bg-gray-100"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+        <div className="space-y-1">
+          {(
+            [
+              ["drive", "My Drive"],
+              ["starred", "Starred"],
+              ["shared", "Shared with me"],
+              ["trash", "Trash"],
+              ["activity", "Activity"],
+            ] as [View, string][]
+          ).map(([v, label]) => (
+            <button
+              key={v}
+              onClick={() => switchView(v)}
+              className={`w-full text-left rounded px-2 py-1.5 ${
+                view === v ? "bg-black text-white" : "hover:bg-gray-100"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {quota && (
+          <div className="mt-auto px-2 pt-3 text-xs text-gray-500">
+            <div className="h-1.5 w-full rounded bg-gray-200 overflow-hidden">
+              <div
+                className={`h-full ${quota.usedBytes / quota.quotaBytes > 0.9 ? "bg-red-500" : "bg-black"}`}
+                style={{ width: `${Math.min(100, (quota.usedBytes / quota.quotaBytes) * 100)}%` }}
+              />
+            </div>
+            <div className="pt-1">
+              {formatSize(quota.usedBytes)} of {formatSize(quota.quotaBytes)} used
+            </div>
+          </div>
+        )}
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -464,6 +543,18 @@ export default function DashboardPage() {
               <option value="video">Video</option>
               <option value="audio">Audio</option>
               <option value="text">Text</option>
+            </select>
+            <select
+              value={tagFilter}
+              onChange={(e) => setTagFilter(e.target.value)}
+              className="border rounded px-2 py-1.5 text-sm shrink-0"
+            >
+              <option value="">All tags</option>
+              {allTags.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
             </select>
           </form>
           <div className="flex items-center gap-3 text-sm shrink-0">
@@ -616,6 +707,15 @@ export default function DashboardPage() {
                       {!owner && (
                         <span className="text-gray-400 shrink-0">({file.role})</span>
                       )}
+                      {file.tags && file.tags.length > 0 && (
+                        <span className="flex items-center gap-1 shrink-0">
+                          {file.tags.map((t) => (
+                            <span key={t.id} className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                              {t.name}
+                            </span>
+                          ))}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                       {view !== "trash" && owner && (
@@ -659,6 +759,11 @@ export default function DashboardPage() {
                               className="underline"
                             >
                               Move
+                            </button>
+                          )}
+                          {owner && (
+                            <button onClick={() => manageTagsForFile(file)} className="underline">
+                              Tags
                             </button>
                           )}
                           {owner && (

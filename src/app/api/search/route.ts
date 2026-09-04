@@ -17,7 +17,8 @@ export async function GET(request: NextRequest) {
 
   const q = request.nextUrl.searchParams.get("q")?.trim() ?? "";
   const type = request.nextUrl.searchParams.get("type")?.trim() ?? "";
-  if (!q && !type) return NextResponse.json({ files: [] });
+  const tagId = request.nextUrl.searchParams.get("tag")?.trim() ?? "";
+  if (!q && !type && !tagId) return NextResponse.json({ files: [] });
 
   const where: Prisma.FileWhereInput = {
     ownerId: session.userId,
@@ -27,8 +28,9 @@ export async function GET(request: NextRequest) {
   if (type && TYPE_FILTERS[type]) {
     where.OR = TYPE_FILTERS[type].map((prefix) => ({ mimeType: { startsWith: prefix } }));
   }
+  if (tagId) where.tags = { some: { id: tagId } };
 
-  const files = await prisma.file.findMany({ where, orderBy: { name: "asc" } });
+  const files = await prisma.file.findMany({ where, include: { tags: true }, orderBy: { name: "asc" } });
 
   return NextResponse.json({ files });
 }

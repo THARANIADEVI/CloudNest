@@ -8,6 +8,7 @@ export async function GET() {
 
   const files = await prisma.file.findMany({
     where: { ownerId: session.userId, starred: true, deletedAt: null },
+    include: { tags: true },
     orderBy: { name: "asc" },
   });
 

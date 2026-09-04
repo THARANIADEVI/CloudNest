@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { getFileAccess, canEdit } from "@/lib/permissions";
 import { saveFile } from "@/lib/storage";
 import { logActivity } from "@/lib/activity";
+import { getQuota } from "@/lib/quota";
 
 export async function GET(
   _request: Request,
@@ -47,6 +48,12 @@ export async function POST(
 
   const file = access.file;
   const buffer = Buffer.from(await upload.arrayBuffer());
+
+  const { usedBytes, quotaBytes } = await getQuota(file.ownerId);
+  if (usedBytes + buffer.length > quotaBytes) {
+    return NextResponse.json({ error: "Storage quota exceeded" }, { status: 413 });
+  }
+
   const diskName = await saveFile(buffer, upload.name);
 
   const [, updated] = await prisma.$transaction([

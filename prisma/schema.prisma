@@ -12,9 +12,11 @@ model User {
   email            String        @unique
   password         String
   name             String
+  quotaBytes       Int           @default(1073741824)
   createdAt        DateTime      @default(now())
   folders          Folder[]
   files            File[]
+  tags             Tag[]
   userShares       UserShare[]   @relation("SharedWith")
   fileVersions     FileVersion[]
   activitiesOwned  Activity[]    @relation("ActivityOwner")
@@ -49,6 +51,7 @@ model File {
   owner      User        @relation(fields: [ownerId], references: [id])
   shares     Share[]
   userShares UserShare[]
+  tags           Tag[]
   starred        Boolean       @default(false)
   currentVersion Int           @default(1)
   versions       FileVersion[]
@@ -98,6 +101,18 @@ model Share {
   createdAt  DateTime  @default(now())
 
   @@index([fileId])
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  files     File[]
+  createdAt DateTime @default(now())
+
+  @@unique([ownerId, name])
+  @@index([ownerId])
 }
 
 model UserShare {

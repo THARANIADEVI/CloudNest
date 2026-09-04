@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { saveFile } from "@/lib/storage";
 import { logActivity } from "@/lib/activity";
+import { getQuota } from "@/lib/quota";
 
 export async function POST(request: NextRequest) {
   const session = await getSession();
@@ -23,6 +24,12 @@ export async function POST(request: NextRequest) {
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
+
+  const { usedBytes, quotaBytes } = await getQuota(session.userId);
+  if (usedBytes + buffer.length > quotaBytes) {
+    return NextResponse.json({ error: "Storage quota exceeded" }, { status: 413 });
+  }
+
   const diskName = await saveFile(buffer, file.name);
 
   const record = await prisma.file.create({
