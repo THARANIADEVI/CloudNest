@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile } from "fs/promises";
 import { prisma } from "@/lib/prisma";
 import { verifyPassword } from "@/lib/auth";
-import { resolveFilePath } from "@/lib/storage";
+import { readStoredFile } from "@/lib/storage";
 
 export async function GET(
   request: NextRequest,
@@ -21,7 +20,7 @@ export async function GET(
     if (!valid) return NextResponse.json({ error: "Incorrect password" }, { status: 401 });
   }
 
-  const buffer = await readFile(resolveFilePath(share.file.path));
+  const buffer = await readStoredFile(share.file.path);
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": share.file.mimeType,

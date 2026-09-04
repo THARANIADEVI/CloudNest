@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { readFile } from "fs/promises";
 import { getSession } from "@/lib/auth";
-import { resolveFilePath } from "@/lib/storage";
+import { readStoredFile } from "@/lib/storage";
 import { getFileAccess } from "@/lib/permissions";
 
 const INLINE_SAFE = ["image/", "application/pdf", "text/plain"];
@@ -19,7 +18,7 @@ export async function GET(
   const file = access.file;
 
   const inline = INLINE_SAFE.some((prefix) => file.mimeType.startsWith(prefix));
-  const buffer = await readFile(resolveFilePath(file.path));
+  const buffer = await readStoredFile(file.path);
 
   return new NextResponse(new Uint8Array(buffer), {
     headers: {

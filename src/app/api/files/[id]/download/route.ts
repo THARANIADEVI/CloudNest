@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { readFile } from "fs/promises";
 import { getSession } from "@/lib/auth";
-import { resolveFilePath } from "@/lib/storage";
+import { readStoredFile } from "@/lib/storage";
 import { getFileAccess } from "@/lib/permissions";
 
 export async function GET(
@@ -16,7 +15,7 @@ export async function GET(
   if (!access) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const file = access.file;
 
-  const buffer = await readFile(resolveFilePath(file.path));
+  const buffer = await readStoredFile(file.path);
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": file.mimeType,
