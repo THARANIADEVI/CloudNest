@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { readStoredFile } from "@/lib/storage";
+import { readStoredFile, getSignedDownloadUrl } from "@/lib/storage";
 import { getFileAccess } from "@/lib/permissions";
 
 export async function GET(
@@ -14,6 +14,9 @@ export async function GET(
   const access = await getFileAccess(id, session.userId);
   if (!access) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const file = access.file;
+
+  const signedUrl = await getSignedDownloadUrl(file.path, file.name);
+  if (signedUrl) return NextResponse.redirect(signedUrl);
 
   const buffer = await readStoredFile(file.path);
   return new NextResponse(new Uint8Array(buffer), {

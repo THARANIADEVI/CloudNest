@@ -1,36 +1,73 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CloudNest
 
-## Getting Started
+Cloud-based file storage and sharing app (Google Drive–style core features), built as a single Next.js full-stack app: React UI + Next.js API routes + Prisma/PostgreSQL, no separate backend service.
 
-First, run the development server:
+## Features
+
+**Core**
+- Email + password auth (bcrypt + JWT in an HttpOnly cookie)
+- Folder management (nested, CRUD)
+- File upload/download, drag & drop
+- Sharing with Viewer/Editor roles, per-user
+- Public share links with optional expiry & password
+- Search & filters, starred files
+- Trash with restore / permanent delete
+
+**Phase 2**
+- File version history
+- Image/PDF previews
+- Activity log per file
+- Tags & labels
+- Per-user storage quota
+
+**Security**
+- JWT stored in HttpOnly, `SameSite=Lax` cookies
+- Server-side role checks on every file/folder route (`src/lib/permissions.ts`)
+- Rate limiting on login, signup, and public share-link downloads (`src/lib/rateLimit.ts`)
+- Zod input validation on API routes
+- Object storage abstraction supports S3-compatible signed URLs (falls back to local disk in dev)
+
+## Tech stack
+
+- Next.js (App Router) + React
+- Prisma ORM, PostgreSQL (SQLite works for local dev via `DATABASE_URL`)
+- Tailwind CSS
+- Vitest for unit tests
+
+## Getting started
 
 ```bash
+npm install
+npx prisma migrate dev   # applies migrations to your local DB
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Create `.env` (see `.env` in repo for local defaults):
 
-## Learn More
+| Variable | Required | Purpose |
+|---|---|---|
+| `DATABASE_URL` | yes | Postgres (or SQLite for local dev) connection string |
+| `JWT_SECRET` | yes | Signing key for session JWTs |
+| `UPLOAD_DIR` | no | Local disk path for uploads when S3 is not configured (defaults to `./uploads`) |
+| `S3_BUCKET` | no | Enables S3-compatible object storage when set together with the vars below |
+| `S3_REGION` | no | S3 region (default `auto`, works with R2/Supabase) |
+| `S3_ENDPOINT` | no | Custom endpoint for S3-compatible providers (Supabase Storage, R2, MinIO) |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | no | Credentials for the bucket above |
 
-To learn more about Next.js, take a look at the following resources:
+Without `S3_*` vars, files are stored on local disk — fine for local dev, **not durable on ephemeral hosts** (e.g. Render's free tier wipes the filesystem on redeploy). Set the S3 vars in production.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Scripts
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `npm run dev` – start dev server
+- `npm run build` / `npm start` – production build & serve
+- `npm run lint` – ESLint
+- `npm test` – run unit tests (Vitest)
 
-## Deploy on Vercel
+## Deployment
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Backend/DB**: `render.yaml` provisions a Postgres DB + Node web service on Render (`npx prisma migrate deploy` runs on deploy). Configure `S3_*` env vars in the Render dashboard for durable file storage.
+- **Frontend**: project is linked to Vercel (`.vercel/project.json`); `vercel --prod` or a connected Git push deploys it. If deploying frontend and backend separately, point the frontend's API calls at the Render URL.

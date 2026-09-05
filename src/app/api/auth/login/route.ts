@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyPassword, createSession } from "@/lib/auth";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rateLimit";
 
 const schema = z.object({
   email: z.string().email(),
@@ -9,6 +10,9 @@ const schema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  const rl = checkRateLimit(`login:${getClientIp(request)}`, 10, 15 * 60 * 1000);
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs!);
+
   const body = await request.json();
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
