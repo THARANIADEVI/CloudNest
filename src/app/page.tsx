@@ -12,6 +12,7 @@ type FolderItem = {
   name: string;
   parentId: string | null;
   deletedAt?: string | null;
+  createdAt?: string;
 };
 
 type Tag = { id: string; name: string };
@@ -24,8 +25,10 @@ type FileItem = {
   folderId: string | null;
   starred: boolean;
   deletedAt?: string | null;
+  createdAt?: string;
   role?: "owner" | "editor" | "viewer";
   tags?: Tag[];
+  ownerName?: string;
 };
 
 type Crumb = { id: string | null; name: string };
@@ -67,6 +70,11 @@ function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDate(iso?: string) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 function isOwner(file: FileItem) {
@@ -683,163 +691,212 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-            <div className="space-y-1">
-              {view === "drive" &&
-                !searchResults &&
-                folders.map((folder) => (
-                  <div
-                    key={folder.id}
-                    className="flex flex-wrap items-center justify-between gap-2 border rounded px-3 py-2 text-sm hover:bg-gray-50"
-                  >
-                    <button onClick={() => openFolder(folder)} className="flex items-center gap-2 text-left basis-full sm:basis-auto sm:flex-1 min-w-0">
-                      <span>📁</span>
-                      <span className="truncate">{folder.name}</span>
-                    </button>
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <button onClick={() => renameFolderItem(folder)} className="underline">
-                        Rename
-                      </button>
-                      <button
-                        onClick={() => setMoveTarget({ type: "folder", id: folder.id, name: folder.name })}
-                        className="underline"
-                      >
-                        Move
-                      </button>
-                      <button onClick={() => trashFolderItem(folder.id)} className="text-red-600 underline">
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
-
-              {view === "trash" &&
-                trashFolders.map((folder) => (
-                  <div
-                    key={folder.id}
-                    className="flex flex-wrap items-center justify-between gap-2 border rounded px-3 py-2 text-sm hover:bg-gray-50"
-                  >
-                    <div className="flex items-center gap-2 flex-wrap basis-full sm:basis-auto sm:flex-1 min-w-0">
-                      <span>📁</span>
-                      <span className="truncate">{folder.name}</span>
-                    </div>
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <button onClick={() => restoreFolder(folder.id)} className="underline">
-                        Restore
-                      </button>
-                      <button onClick={() => deleteFolderForever(folder.id)} className="text-red-600 underline">
-                        Delete forever
-                      </button>
-                    </div>
-                  </div>
-                ))}
-
-              {listFiles.map((file) => {
-                const previewable =
-                  file.mimeType.startsWith("image/") ||
-                  file.mimeType === "application/pdf" ||
-                  file.mimeType === "text/plain";
-                const owner = isOwner(file);
-                const editable = canEditFile(file);
-                return (
-                  <div
-                    key={file.id}
-                    className="flex flex-wrap items-center justify-between gap-2 border rounded px-3 py-2 text-sm hover:bg-gray-50"
-                  >
-                    <div className="flex items-center gap-2 flex-wrap basis-full sm:basis-auto sm:flex-1 min-w-0">
-                      <span>📄</span>
-                      <span className="truncate">{file.name}</span>
-                      <span className="text-gray-400 shrink-0">{formatSize(file.size)}</span>
-                      {!owner && (
-                        <span className="text-gray-400 shrink-0">({file.role})</span>
-                      )}
-                      {file.tags && file.tags.length > 0 && (
-                        <span className="flex items-center gap-1 shrink-0">
-                          {file.tags.map((t) => (
-                            <span key={t.id} className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
-                              {t.name}
-                            </span>
-                          ))}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3 flex-wrap">
-                      {view !== "trash" && owner && (
-                        <button onClick={() => toggleStar(file)} className="underline">
-                          {file.starred ? "Unstar" : "Star"}
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="text-left text-gray-500 border-b">
+                  <th className="py-2 pr-3 font-normal">Name</th>
+                  <th className="py-2 px-3 font-normal hidden sm:table-cell">Owner</th>
+                  <th className="py-2 px-3 font-normal hidden sm:table-cell">Last modified</th>
+                  <th className="py-2 px-3 font-normal hidden sm:table-cell">File size</th>
+                  <th className="py-2 pl-3 font-normal"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {view === "drive" &&
+                  !searchResults &&
+                  folders.map((folder) => (
+                    <tr key={folder.id} className="border-b hover:bg-gray-50">
+                      <td className="py-2 pr-3 min-w-0">
+                        <button onClick={() => openFolder(folder)} className="flex items-center gap-2 text-left w-full min-w-0">
+                          <span>📁</span>
+                          <span className="truncate">{folder.name}</span>
                         </button>
-                      )}
-                      {previewable && (
-                        <a href={`/api/files/${file.id}/preview`} target="_blank" rel="noreferrer" className="underline">
-                          Preview
-                        </a>
-                      )}
-                      <a href={`/api/files/${file.id}/download`} className="underline">
-                        Download
-                      </a>
-                      {view === "trash" ? (
-                        <>
-                          <button onClick={() => restoreFile(file.id)} className="underline">
-                            Restore
+                      </td>
+                      <td className="py-2 px-3 text-gray-500 hidden sm:table-cell">me</td>
+                      <td className="py-2 px-3 text-gray-500 hidden sm:table-cell whitespace-nowrap">
+                        {formatDate(folder.createdAt)}
+                      </td>
+                      <td className="py-2 px-3 text-gray-400 hidden sm:table-cell">—</td>
+                      <td className="py-2 pl-3">
+                        <div className="flex items-center gap-3 flex-wrap justify-end">
+                          <button onClick={() => renameFolderItem(folder)} className="underline">
+                            Rename
                           </button>
-                          <button onClick={() => deleteFileForever(file.id)} className="text-red-600 underline">
-                            Delete forever
-                          </button>
-                        </>
-                      ) : (
-                        <>
                           <button
-                            onClick={() => setVersionsTarget({ id: file.id, name: file.name, canEdit: editable })}
+                            onClick={() => setMoveTarget({ type: "folder", id: folder.id, name: folder.name })}
                             className="underline"
                           >
-                            Versions
+                            Move
                           </button>
-                          {editable && (
-                            <button onClick={() => renameFileItem(file)} className="underline">
-                              Rename
-                            </button>
-                          )}
-                          {owner && (
-                            <button
-                              onClick={() => setMoveTarget({ type: "file", id: file.id, name: file.name })}
-                              className="underline"
-                            >
-                              Move
-                            </button>
-                          )}
-                          {owner && (
-                            <button onClick={() => setTagsTarget(file)} className="underline">
-                              Tags
-                            </button>
-                          )}
-                          {owner && (
-                            <button onClick={() => setShareTarget({ id: file.id, name: file.name })} className="underline">
-                              Share
-                            </button>
-                          )}
-                          {editable && (
-                            <button onClick={() => trashFileItem(file.id)} className="text-red-600 underline">
-                              Delete
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+                          <button onClick={() => trashFolderItem(folder.id)} className="text-red-600 underline">
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
 
-              {view === "drive" &&
-                !loading &&
-                !searchResults &&
-                folders.length === 0 &&
-                files.length === 0 && <p className="text-sm text-gray-500">Empty folder. Drag files here to upload.</p>}
-              {view !== "drive" && !loading && !searchResults && listFiles.length === 0 && folders.length === 0 && trashFolders.length === 0 && (
-                <p className="text-sm text-gray-500">Nothing here.</p>
-              )}
-              {searchResults && searchResults.length === 0 && (
-                <p className="text-sm text-gray-500">No files found.</p>
-              )}
-            </div>
+                {view === "trash" &&
+                  trashFolders.map((folder) => (
+                    <tr key={folder.id} className="border-b hover:bg-gray-50">
+                      <td className="py-2 pr-3 min-w-0">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span>📁</span>
+                          <span className="truncate">{folder.name}</span>
+                        </div>
+                      </td>
+                      <td className="py-2 px-3 text-gray-500 hidden sm:table-cell">me</td>
+                      <td className="py-2 px-3 text-gray-500 hidden sm:table-cell whitespace-nowrap">
+                        {formatDate(folder.createdAt)}
+                      </td>
+                      <td className="py-2 px-3 text-gray-400 hidden sm:table-cell">—</td>
+                      <td className="py-2 pl-3">
+                        <div className="flex items-center gap-3 flex-wrap justify-end">
+                          <button onClick={() => restoreFolder(folder.id)} className="underline">
+                            Restore
+                          </button>
+                          <button onClick={() => deleteFolderForever(folder.id)} className="text-red-600 underline">
+                            Delete forever
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+
+                {listFiles.map((file) => {
+                  const previewable =
+                    file.mimeType.startsWith("image/") ||
+                    file.mimeType === "application/pdf" ||
+                    file.mimeType === "text/plain";
+                  const owner = isOwner(file);
+                  const editable = canEditFile(file);
+                  return (
+                    <tr key={file.id} className="border-b hover:bg-gray-50">
+                      <td className="py-2 pr-3 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap min-w-0">
+                          <span>📄</span>
+                          <span className="truncate">{file.name}</span>
+                          {!owner && <span className="text-gray-400 shrink-0">({file.role})</span>}
+                          {file.tags && file.tags.length > 0 && (
+                            <span className="flex items-center gap-1 shrink-0">
+                              {file.tags.map((t) => (
+                                <span key={t.id} className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                                  {t.name}
+                                </span>
+                              ))}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-2 px-3 text-gray-500 hidden sm:table-cell">
+                        {owner ? "me" : (file.ownerName ?? "—")}
+                      </td>
+                      <td className="py-2 px-3 text-gray-500 hidden sm:table-cell whitespace-nowrap">
+                        {formatDate(file.createdAt)}
+                      </td>
+                      <td className="py-2 px-3 text-gray-500 hidden sm:table-cell whitespace-nowrap">
+                        {formatSize(file.size)}
+                      </td>
+                      <td className="py-2 pl-3">
+                        <div className="flex items-center gap-3 flex-wrap justify-end">
+                          {view !== "trash" && owner && (
+                            <button onClick={() => toggleStar(file)} className="underline">
+                              {file.starred ? "Unstar" : "Star"}
+                            </button>
+                          )}
+                          {previewable && (
+                            <a href={`/api/files/${file.id}/preview`} target="_blank" rel="noreferrer" className="underline">
+                              Preview
+                            </a>
+                          )}
+                          <a href={`/api/files/${file.id}/download`} className="underline">
+                            Download
+                          </a>
+                          {view === "trash" ? (
+                            <>
+                              <button onClick={() => restoreFile(file.id)} className="underline">
+                                Restore
+                              </button>
+                              <button onClick={() => deleteFileForever(file.id)} className="text-red-600 underline">
+                                Delete forever
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => setVersionsTarget({ id: file.id, name: file.name, canEdit: editable })}
+                                className="underline"
+                              >
+                                Versions
+                              </button>
+                              {editable && (
+                                <button onClick={() => renameFileItem(file)} className="underline">
+                                  Rename
+                                </button>
+                              )}
+                              {owner && (
+                                <button
+                                  onClick={() => setMoveTarget({ type: "file", id: file.id, name: file.name })}
+                                  className="underline"
+                                >
+                                  Move
+                                </button>
+                              )}
+                              {owner && (
+                                <button onClick={() => setTagsTarget(file)} className="underline">
+                                  Tags
+                                </button>
+                              )}
+                              {owner && (
+                                <button onClick={() => setShareTarget({ id: file.id, name: file.name })} className="underline">
+                                  Share
+                                </button>
+                              )}
+                              {editable && (
+                                <button onClick={() => trashFileItem(file.id)} className="text-red-600 underline">
+                                  Delete
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {view === "drive" &&
+                  !loading &&
+                  !searchResults &&
+                  folders.length === 0 &&
+                  files.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-3 text-sm text-gray-500">
+                        Empty folder. Drag files here to upload.
+                      </td>
+                    </tr>
+                  )}
+                {view !== "drive" &&
+                  !loading &&
+                  !searchResults &&
+                  listFiles.length === 0 &&
+                  folders.length === 0 &&
+                  trashFolders.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-3 text-sm text-gray-500">
+                        Nothing here.
+                      </td>
+                    </tr>
+                  )}
+                {searchResults && searchResults.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-3 text-sm text-gray-500">
+                      No files found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           )}
         </main>
       </div>

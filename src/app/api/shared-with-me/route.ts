@@ -8,11 +8,11 @@ export async function GET() {
 
   const shares = await prisma.userShare.findMany({
     where: { sharedWithId: session.userId, file: { deletedAt: null } },
-    include: { file: { include: { tags: true } } },
+    include: { file: { include: { tags: true, owner: { select: { name: true } } } } },
     orderBy: { createdAt: "desc" },
   });
 
-  const files = shares.map((s) => ({ ...s.file, role: s.role }));
+  const files = shares.map((s) => ({ ...s.file, role: s.role, ownerName: s.file.owner.name }));
 
   return NextResponse.json({ files });
 }
