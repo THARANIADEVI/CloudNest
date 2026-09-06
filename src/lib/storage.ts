@@ -23,6 +23,11 @@ async function getS3Client() {
       accessKeyId: S3_ACCESS_KEY_ID!,
       secretAccessKey: S3_SECRET_ACCESS_KEY!,
     },
+    // Non-AWS S3-compatible providers (Supabase, R2, MinIO) don't handle the
+    // SDK's default request/response checksum headers and fail signature
+    // verification with SignatureDoesNotMatch unless this is disabled.
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
   });
 }
 
