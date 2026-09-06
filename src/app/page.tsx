@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, DragEvent, FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, FormEvent, ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import MoveDialog from "@/components/MoveDialog";
 import ShareDialog from "@/components/ShareDialog";
@@ -33,6 +33,37 @@ type FileItem = {
 
 type Crumb = { id: string | null; name: string };
 type View = "drive" | "starred" | "shared" | "trash" | "activity";
+
+const NAV_ICONS: Record<View, ReactNode> = {
+  drive: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-[18px] h-[18px] shrink-0">
+      <path d="M3 10.5 12 4l9 6.5V19a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" strokeLinejoin="round" />
+    </svg>
+  ),
+  starred: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-[18px] h-[18px] shrink-0">
+      <path d="M12 3.5 14.6 9l6 .9-4.3 4.2 1 6-5.3-2.8-5.3 2.8 1-6L3.4 9.9l6-.9z" strokeLinejoin="round" />
+    </svg>
+  ),
+  shared: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-[18px] h-[18px] shrink-0">
+      <circle cx="9" cy="8" r="3" />
+      <path d="M3 20c0-3 2.7-5 6-5s6 2 6 5" />
+      <path d="M16 4.5a3 3 0 0 1 0 6M20 20c0-2.5-1.8-4.4-4-4.9" strokeLinecap="round" />
+    </svg>
+  ),
+  trash: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-[18px] h-[18px] shrink-0">
+      <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0-.8 12.1A2 2 0 0 1 14.2 21H9.8a2 2 0 0 1-2-1.9L7 7" strokeLinejoin="round" />
+    </svg>
+  ),
+  activity: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-[18px] h-[18px] shrink-0">
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+};
 
 type Activity = {
   id: string;
@@ -88,6 +119,7 @@ function canEditFile(file: FileItem) {
 export default function DashboardPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const sidebarUploadRef = useRef<HTMLInputElement>(null);
 
   const [checkedAuth, setCheckedAuth] = useState(false);
   const [userName, setUserName] = useState("");
@@ -104,6 +136,7 @@ export default function DashboardPage() {
   );
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState("");
+  const [newMenuOpen, setNewMenuOpen] = useState(false);
 
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
@@ -239,6 +272,18 @@ export default function DashboardPage() {
     else if (view === "trash") loadTrash();
     else if (view === "activity") loadActivity();
     loadQuota();
+  }
+
+  function startNewFolder() {
+    setNewMenuOpen(false);
+    if (view !== "drive") switchView("drive");
+    createFolder();
+  }
+
+  function startUpload() {
+    setNewMenuOpen(false);
+    if (view !== "drive") switchView("drive");
+    sidebarUploadRef.current?.click();
   }
 
   function switchView(v: View) {
@@ -525,8 +570,44 @@ export default function DashboardPage() {
 
   return (
     <div className="flex-1 flex flex-col sm:flex-row">
-      <aside className="w-full sm:w-48 border-b sm:border-b-0 sm:border-r shrink-0 p-3 text-sm flex flex-col sm:h-full">
-        <div className="font-semibold px-2 pb-3">CloudNest</div>
+      <aside className="w-full sm:w-56 border-b sm:border-b-0 sm:border-r shrink-0 p-3 text-sm flex flex-col sm:h-full bg-white">
+        <div className="flex items-center gap-2 px-2 pb-4">
+          <span className="text-xl">🗂️</span>
+          <span className="font-semibold text-lg">CloudNest</span>
+        </div>
+
+        <div className="relative px-2 pb-4">
+          <button
+            onClick={() => setNewMenuOpen((o) => !o)}
+            className="flex items-center gap-2 rounded-2xl border shadow-sm px-4 py-2.5 text-sm font-medium hover:shadow-md transition-shadow"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+              <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+            </svg>
+            New
+          </button>
+          {newMenuOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setNewMenuOpen(false)} />
+              <div className="absolute left-2 top-full mt-1 z-20 w-44 bg-white border rounded-lg shadow-lg py-1">
+                <button onClick={startNewFolder} className="w-full text-left px-3 py-2 hover:bg-gray-100 flex items-center gap-2">
+                  <span>📁</span> New folder
+                </button>
+                <button onClick={startUpload} className="w-full text-left px-3 py-2 hover:bg-gray-100 flex items-center gap-2">
+                  <span>📄</span> Upload file
+                </button>
+              </div>
+            </>
+          )}
+          <input
+            ref={sidebarUploadRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={onUploadChange}
+          />
+        </div>
+
         <div className="flex flex-row sm:flex-col gap-1 overflow-x-auto sm:overflow-visible">
           {(
             [
@@ -540,19 +621,26 @@ export default function DashboardPage() {
             <button
               key={v}
               onClick={() => switchView(v)}
-              className={`text-left rounded px-2 py-1.5 whitespace-nowrap sm:w-full ${
-                view === v ? "bg-black text-white" : "hover:bg-gray-100"
+              className={`flex items-center gap-3 text-left rounded-full px-4 py-2 whitespace-nowrap sm:w-full transition-colors ${
+                view === v ? "bg-blue-100 text-blue-800 font-medium" : "hover:bg-gray-100 text-gray-700"
               }`}
             >
+              {NAV_ICONS[v]}
               {label}
             </button>
           ))}
         </div>
         {quota && (
-          <div className="sm:mt-auto px-2 pt-3 text-xs text-gray-500">
-            <div className="h-1.5 w-full rounded bg-gray-200 overflow-hidden">
+          <div className="sm:mt-auto px-4 pt-4 text-xs text-gray-500">
+            <div className="flex items-center gap-2 pb-2 text-gray-600">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-4 h-4 shrink-0">
+                <path d="M6 18a4 4 0 0 1-1-7.9 5 5 0 0 1 9.6-2A4.5 4.5 0 0 1 18 18H6Z" strokeLinejoin="round" />
+              </svg>
+              Storage
+            </div>
+            <div className="h-1.5 w-full rounded-full bg-gray-200 overflow-hidden">
               <div
-                className={`h-full ${quota.usedBytes / quota.quotaBytes > 0.9 ? "bg-red-500" : "bg-black"}`}
+                className={`h-full rounded-full ${quota.usedBytes / quota.quotaBytes > 0.9 ? "bg-red-500" : "bg-blue-600"}`}
                 style={{ width: `${Math.min(100, (quota.usedBytes / quota.quotaBytes) * 100)}%` }}
               />
             </div>
