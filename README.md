@@ -30,7 +30,7 @@ Cloud-based file storage and sharing app (Google Drive–style core features), b
 ## Tech stack
 
 - Next.js (App Router) + React
-- Prisma ORM, PostgreSQL (SQLite works for local dev via `DATABASE_URL`)
+- Prisma ORM, PostgreSQL (local dev needs a real Postgres instance — Docker, Render, Supabase, or Neon — set via `DATABASE_URL`)
 - Tailwind CSS
 - Vitest for unit tests
 

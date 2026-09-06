@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import MoveDialog from "@/components/MoveDialog";
 import ShareDialog from "@/components/ShareDialog";
 import VersionsDialog from "@/components/VersionsDialog";
+import TagsDialog from "@/components/TagsDialog";
 
 type FolderItem = {
   id: string;
@@ -90,6 +91,9 @@ export default function DashboardPage() {
   const [trashFolders, setTrashFolders] = useState<FolderItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ index: number; total: number; percent: number } | null>(
+    null
+  );
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState("");
 
@@ -108,6 +112,7 @@ export default function DashboardPage() {
   const [versionsTarget, setVersionsTarget] = useState<{ id: string; name: string; canEdit: boolean } | null>(
     null
   );
+  const [tagsTarget, setTagsTarget] = useState<FileItem | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
 
   const currentFolderId = crumbs[crumbs.length - 1].id;
@@ -263,19 +268,51 @@ export default function DashboardPage() {
     }
   }
 
-  async function uploadFiles(fileList: FileList | File[]) {
-    setUploading(true);
-    setError("");
-    for (const file of Array.from(fileList)) {
+  function uploadOne(file: File, onProgress: (percent: number) => void): Promise<void> {
+    return new Promise((resolve, reject) => {
       const formData = new FormData();
       formData.append("file", file);
       if (currentFolderId) formData.append("folderId", currentFolderId);
-      const res = await fetch("/api/files", { method: "POST", body: formData });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.error ?? `Upload failed: ${file.name}`);
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/files");
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+        } else {
+          const message = (() => {
+            try {
+              return JSON.parse(xhr.responseText).error as string;
+            } catch {
+              return `Upload failed: ${file.name}`;
+            }
+          })();
+          reject(new Error(message));
+        }
+      };
+      xhr.onerror = () => reject(new Error(`Upload failed: ${file.name}`));
+      xhr.send(formData);
+    });
+  }
+
+  async function uploadFiles(fileList: FileList | File[]) {
+    setUploading(true);
+    setError("");
+    const filesArr = Array.from(fileList);
+    for (let i = 0; i < filesArr.length; i++) {
+      const file = filesArr[i];
+      setUploadProgress({ index: i + 1, total: filesArr.length, percent: 0 });
+      try {
+        await uploadOne(file, (percent) =>
+          setUploadProgress({ index: i + 1, total: filesArr.length, percent })
+        );
+      } catch (err) {
+        setError(err instanceof Error ? err.message : `Upload failed: ${file.name}`);
       }
     }
+    setUploadProgress(null);
     setUploading(false);
     loadFolder(currentFolderId);
     loadQuota();
@@ -401,12 +438,7 @@ export default function DashboardPage() {
     }
   }
 
-  async function manageTagsForFile(file: FileItem) {
-    const current = (file.tags ?? []).map((t) => t.name).join(", ");
-    const input = window.prompt("Tags (comma separated):", current);
-    if (input === null) return;
-    const names = Array.from(new Set(input.split(",").map((n) => n.trim()).filter(Boolean)));
-
+  async function saveTagsForFile(file: FileItem, names: string[]) {
     const tagIds: string[] = [];
     for (const name of names) {
       const existing = allTags.find((t) => t.name === name);
@@ -484,10 +516,10 @@ export default function DashboardPage() {
   const listFiles = searchResults ?? files;
 
   return (
-    <div className="flex-1 flex">
-      <aside className="w-48 border-r shrink-0 p-3 text-sm flex flex-col h-full">
+    <div className="flex-1 flex flex-col sm:flex-row">
+      <aside className="w-full sm:w-48 border-b sm:border-b-0 sm:border-r shrink-0 p-3 text-sm flex flex-col sm:h-full">
         <div className="font-semibold px-2 pb-3">CloudNest</div>
-        <div className="space-y-1">
+        <div className="flex flex-row sm:flex-col gap-1 overflow-x-auto sm:overflow-visible">
           {(
             [
               ["drive", "My Drive"],
@@ -500,7 +532,7 @@ export default function DashboardPage() {
             <button
               key={v}
               onClick={() => switchView(v)}
-              className={`w-full text-left rounded px-2 py-1.5 ${
+              className={`text-left rounded px-2 py-1.5 whitespace-nowrap sm:w-full ${
                 view === v ? "bg-black text-white" : "hover:bg-gray-100"
               }`}
             >
@@ -509,7 +541,7 @@ export default function DashboardPage() {
           ))}
         </div>
         {quota && (
-          <div className="mt-auto px-2 pt-3 text-xs text-gray-500">
+          <div className="sm:mt-auto px-2 pt-3 text-xs text-gray-500">
             <div className="h-1.5 w-full rounded bg-gray-200 overflow-hidden">
               <div
                 className={`h-full ${quota.usedBytes / quota.quotaBytes > 0.9 ? "bg-red-500" : "bg-black"}`}
@@ -524,13 +556,13 @@ export default function DashboardPage() {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="border-b px-6 py-3 flex items-center justify-between gap-4">
-          <form onSubmit={runSearch} className="flex-1 max-w-md flex items-center gap-2">
+        <header className="border-b px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+          <form onSubmit={runSearch} className="w-full sm:flex-1 sm:max-w-md flex flex-wrap items-center gap-2">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search files..."
-              className="w-full border rounded px-3 py-1.5 text-sm"
+              className="w-full sm:w-auto sm:flex-1 border rounded px-3 py-1.5 text-sm"
             />
             <select
               value={typeFilter}
@@ -566,7 +598,7 @@ export default function DashboardPage() {
         </header>
 
         {view === "drive" && (
-          <div className="px-6 py-3 flex items-center justify-between gap-4 border-b">
+          <div className="px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 border-b">
             <nav className="text-sm flex items-center gap-1 flex-wrap">
               {crumbs.map((c, i) => (
                 <span key={c.id ?? "root"} className="flex items-center gap-1">
@@ -581,7 +613,7 @@ export default function DashboardPage() {
                 </span>
               ))}
             </nav>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button onClick={createFolder} className="border rounded px-3 py-1.5 text-sm">
                 New folder
               </button>
@@ -590,9 +622,22 @@ export default function DashboardPage() {
                 disabled={uploading}
                 className="bg-black text-white rounded px-3 py-1.5 text-sm disabled:opacity-50"
               >
-                {uploading ? "Uploading..." : "Upload file"}
+                {uploadProgress
+                  ? `Uploading ${uploadProgress.index}/${uploadProgress.total} — ${uploadProgress.percent}%`
+                  : "Upload file"}
               </button>
               <input ref={fileInputRef} type="file" multiple className="hidden" onChange={onUploadChange} />
+            </div>
+          </div>
+        )}
+
+        {uploadProgress && (
+          <div className="px-4 sm:px-6 pb-1 -mt-2">
+            <div className="h-1.5 w-full max-w-xs rounded bg-gray-200 overflow-hidden">
+              <div
+                className="h-full bg-black transition-[width]"
+                style={{ width: `${uploadProgress.percent}%` }}
+              />
             </div>
           </div>
         )}
@@ -606,7 +651,7 @@ export default function DashboardPage() {
         {error && <p className="px-6 pt-2 text-sm text-red-600">{error}</p>}
 
         <main
-          className={`flex-1 p-6 relative ${dragging ? "bg-blue-50" : ""}`}
+          className={`flex-1 p-4 sm:p-6 relative ${dragging ? "bg-blue-50" : ""}`}
           onDragOver={onDragOver}
           onDragLeave={onDragLeave}
           onDrop={onDrop}
@@ -644,13 +689,13 @@ export default function DashboardPage() {
                 folders.map((folder) => (
                   <div
                     key={folder.id}
-                    className="flex items-center justify-between border rounded px-3 py-2 text-sm hover:bg-gray-50"
+                    className="flex flex-wrap items-center justify-between gap-2 border rounded px-3 py-2 text-sm hover:bg-gray-50"
                   >
-                    <button onClick={() => openFolder(folder)} className="flex items-center gap-2 text-left flex-1 min-w-0">
+                    <button onClick={() => openFolder(folder)} className="flex items-center gap-2 text-left basis-full sm:basis-auto sm:flex-1 min-w-0">
                       <span>📁</span>
                       <span className="truncate">{folder.name}</span>
                     </button>
-                    <div className="flex items-center gap-3 shrink-0">
+                    <div className="flex items-center gap-3 flex-wrap">
                       <button onClick={() => renameFolderItem(folder)} className="underline">
                         Rename
                       </button>
@@ -671,13 +716,13 @@ export default function DashboardPage() {
                 trashFolders.map((folder) => (
                   <div
                     key={folder.id}
-                    className="flex items-center justify-between border rounded px-3 py-2 text-sm hover:bg-gray-50"
+                    className="flex flex-wrap items-center justify-between gap-2 border rounded px-3 py-2 text-sm hover:bg-gray-50"
                   >
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap basis-full sm:basis-auto sm:flex-1 min-w-0">
                       <span>📁</span>
                       <span className="truncate">{folder.name}</span>
                     </div>
-                    <div className="flex items-center gap-3 shrink-0">
+                    <div className="flex items-center gap-3 flex-wrap">
                       <button onClick={() => restoreFolder(folder.id)} className="underline">
                         Restore
                       </button>
@@ -698,9 +743,9 @@ export default function DashboardPage() {
                 return (
                   <div
                     key={file.id}
-                    className="flex items-center justify-between border rounded px-3 py-2 text-sm hover:bg-gray-50"
+                    className="flex flex-wrap items-center justify-between gap-2 border rounded px-3 py-2 text-sm hover:bg-gray-50"
                   >
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap basis-full sm:basis-auto sm:flex-1 min-w-0">
                       <span>📄</span>
                       <span className="truncate">{file.name}</span>
                       <span className="text-gray-400 shrink-0">{formatSize(file.size)}</span>
@@ -717,7 +762,7 @@ export default function DashboardPage() {
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 shrink-0">
+                    <div className="flex items-center gap-3 flex-wrap">
                       {view !== "trash" && owner && (
                         <button onClick={() => toggleStar(file)} className="underline">
                           {file.starred ? "Unstar" : "Star"}
@@ -762,7 +807,7 @@ export default function DashboardPage() {
                             </button>
                           )}
                           {owner && (
-                            <button onClick={() => manageTagsForFile(file)} className="underline">
+                            <button onClick={() => setTagsTarget(file)} className="underline">
                               Tags
                             </button>
                           )}
@@ -820,6 +865,16 @@ export default function DashboardPage() {
           canEdit={versionsTarget.canEdit}
           onClose={() => setVersionsTarget(null)}
           onRestored={refresh}
+        />
+      )}
+
+      {tagsTarget && (
+        <TagsDialog
+          fileName={tagsTarget.name}
+          initialTags={tagsTarget.tags ?? []}
+          allTags={allTags}
+          onClose={() => setTagsTarget(null)}
+          onSave={(names) => saveTagsForFile(tagsTarget, names)}
         />
       )}
     </div>
